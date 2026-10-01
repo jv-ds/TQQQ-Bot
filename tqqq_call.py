@@ -16,9 +16,10 @@ Environment variables:
 import csv
 import json
 import os
+import urllib.parse
+import urllib.request
 from datetime import datetime, timezone
 
-import yfinance as yf
 from openai import OpenAI
 
 MODEL = "gpt-6-astra"          # swap for whichever current model you want
@@ -85,7 +86,17 @@ def recent_calls(rows, n=5):
 
 
 def latest_price(ticker):
-    return round(float(yf.Ticker(ticker).history(period="5d")["Close"].iloc[-1]), 2)
+    """Latest daily close from Yahoo Finance's chart endpoint (no pandas/yfinance needed)."""
+    url = ("https://query1.finance.yahoo.com/v8/finance/chart/"
+           f"{urllib.parse.quote(ticker)}?range=5d&interval=1d")
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+    with urllib.request.urlopen(req, timeout=15) as r:
+        data = json.load(r)
+    closes = data["chart"]["result"][0]["indicators"]["quote"][0]["close"]
+    closes = [c for c in closes if c is not None]
+    if not closes:
+        raise RuntimeError(f"No price data returned for {ticker}")
+    return round(closes[-1], 2)
 
 
 def make_call(position, rows):

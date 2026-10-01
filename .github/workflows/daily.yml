@@ -15,6 +15,7 @@ on:
 
 permissions:
   contents: write   # lets the job commit the updated log back to the repo
+  issues: write     # lets the job post each call as an issue (public record)
 
 jobs:
   call:
@@ -25,15 +26,13 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          cache: pip
 
       - run: pip install -r requirements.txt
 
       - name: Make the call
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          SMTP_USER: ${{ secrets.SMTP_USER }}
-          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
-          EMAIL_TO: ${{ secrets.EMAIL_TO }}
           POSITION: ${{ inputs.position }}
         run: python tqqq_call.py
 
@@ -44,3 +43,22 @@ jobs:
           git add tqqq_calls.csv
           git commit -m "Call $(date -u +%Y-%m-%d)" || echo "Nothing to commit"
           git push
+
+      - name: Post call as issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh label create daily-call --color 1f6feb --description "Automated daily TQQQ call" --force
+          gh issue create --title "$(cat alert_title.txt)" --body-file alert_body.md --label daily-call
+
+      - name: Email the call
+        env:
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          EMAIL_TO: ${{ secrets.EMAIL_TO }}
+        run: |
+          jq -n --arg to "$EMAIL_TO" --rawfile subject alert_title.txt --rawfile text alert_body.md \
+            '{from: "TQQQ Bot <onboarding@resend.dev>", to: [$to], subject: $subject, text: $text}' \
+          | curl -sS --fail-with-body https://api.resend.com/emails \
+              -H "Authorization: Bearer $RESEND_API_KEY" \
+              -H "Content-Type: application/json" \
+              -d @-
