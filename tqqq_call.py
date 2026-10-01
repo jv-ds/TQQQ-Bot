@@ -89,7 +89,7 @@ def latest_price(ticker):
 
 
 def make_call(position, rows):
-    client = OpenAI()
+    client = OpenAI(api_key=os.environ["OPENAI_API_KEY"].strip())
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     user_msg = (
         f"Today is {today}.\n"
