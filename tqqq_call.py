@@ -100,7 +100,11 @@ def latest_price(ticker):
 
 
 def make_call(position, rows):
-    client = OpenAI(api_key=os.environ["OPENAI_API_KEY"].strip())
+    client = OpenAI(
+        api_key=os.environ["OPENAI_API_KEY"].strip(),
+        timeout=300,      # give up on a single attempt after 5 minutes
+        max_retries=1,    # retry once, then fail loudly
+    )
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     user_msg = (
         f"Today is {today}.\n"
@@ -112,6 +116,8 @@ def make_call(position, rows):
         instructions=SYSTEM_PROMPT,
         input=user_msg,
         tools=[{"type": "web_search"}],
+        max_tool_calls=6,                 # cap the number of web searches
+        reasoning={"effort": "medium"},   # faster; plenty for a daily call
         text={"format": {"type": "json_schema", "name": "tqqq_call",
                          "schema": SCHEMA, "strict": True}},
     )
@@ -150,10 +156,16 @@ def write_alert(title, body, urgent):
 if __name__ == "__main__":
     rows = read_log()
     position = current_position(rows)
+    print(f"Current position: {position}")
 
     price = latest_price("TQQQ")
     spy = latest_price(BENCHMARK)
+    print(f"Prices: TQQQ ${price}, {BENCHMARK} ${spy}")
+
+    print(f"Asking {MODEL} for a call (this can take a few minutes)...")
+    t0 = datetime.now(timezone.utc)
     result = make_call(position, rows)
+    print(f"Got a call in {(datetime.now(timezone.utc) - t0).seconds}s")
     action = action_for(result["call"], position)
     log_call(result, position, action, price, spy)
 

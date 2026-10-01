@@ -20,6 +20,7 @@ permissions:
 jobs:
   call:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
@@ -34,6 +35,7 @@ jobs:
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           POSITION: ${{ inputs.position }}
+          PYTHONUNBUFFERED: "1"   # show log lines as they happen
         run: python tqqq_call.py
 
       - name: Save log
