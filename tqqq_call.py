@@ -1,16 +1,13 @@
 """
 Ask an OpenAI model to make a discretionary BUY/SELL call on TQQQ,
 using live web search, log every call to a CSV (with SPY as a benchmark),
-and email you the call.
+and write an alert that the workflow posts as a GitHub issue
+(GitHub then emails you about it).
 
 Designed to run unattended on GitHub Actions, but works locally too.
 
 Environment variables:
     OPENAI_API_KEY   required
-    SMTP_USER        optional - email account that sends the alert (e.g. a Gmail address)
-    SMTP_PASSWORD    optional - app password for that account; no email if unset
-    EMAIL_TO         optional - where to send it (defaults to SMTP_USER)
-    SMTP_HOST        optional - defaults to smtp.gmail.com (port 465, SSL)
     POSITION         optional - force the current position (IN/OUT); otherwise it is
                      inferred from the last call in the log (BUY -> IN, SELL -> OUT)
     START_POSITION   optional - position to assume on the very first run (default OUT)
@@ -19,8 +16,6 @@ Environment variables:
 import csv
 import json
 import os
-import smtplib
-from email.message import EmailMessage
 from datetime import datetime, timezone
 
 import yfinance as yf
@@ -133,22 +128,12 @@ def log_call(result, position, action, price, spy):
         ])
 
 
-def notify(title, body, urgent):
-    """Email the call. Skips quietly if email secrets aren't set."""
-    user = os.environ.get("SMTP_USER")
-    password = os.environ.get("SMTP_PASSWORD")
-    to = os.environ.get("EMAIL_TO") or user
-    if not (user and password):
-        return
-    msg = EmailMessage()
-    msg["Subject"] = ("🔔 " if urgent else "") + title
-    msg["From"] = user
-    msg["To"] = to
-    msg.set_content(body)
-    host = os.environ.get("SMTP_HOST", "smtp.gmail.com")
-    with smtplib.SMTP_SSL(host, 465, timeout=30) as s:
-        s.login(user, password)
-        s.send_message(msg)
+def write_alert(title, body, urgent):
+    """Write the alert for the workflow to post as a GitHub issue (GitHub emails you)."""
+    with open("alert_title.txt", "w") as f:
+        f.write(("🔔 " if urgent else "") + title)
+    with open("alert_body.md", "w") as f:
+        f.write(body)
 
 
 if __name__ == "__main__":
@@ -162,10 +147,13 @@ if __name__ == "__main__":
     log_call(result, position, action, price, spy)
 
     body = (
-        f"TQQQ ${price} | SPY ${spy}\n"
-        f"Confidence {result['confidence']}/10, horizon {result['time_horizon']}\n"
+        f"**Action:** {action} (model call: {result['call']}, position before: {position})\n\n"
+        f"**TQQQ** ${price} | **SPY** ${spy}\n\n"
+        f"**Confidence:** {result['confidence']}/10 | **Horizon:** {result['time_horizon']}\n\n"
+        "**Reasoning**\n"
         + "\n".join(f"- {r}" for r in result["reasoning"])
-        + f"\nWould change mind if: {result['what_would_change_my_mind']}"
+        + f"\n\n**Would change mind if:** {result['what_would_change_my_mind']}\n\n"
+        "_Automated experiment. Not financial advice._"
     )
     print(f"{action}\n{body}")
-    notify(f"TQQQ: {action}", body, urgent=action in ("BUY NOW", "SELL NOW"))
+    write_alert(f"TQQQ: {action}", body, urgent=action in ("BUY NOW", "SELL NOW"))
