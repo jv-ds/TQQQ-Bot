@@ -40,9 +40,13 @@ choppy markets are bad for it, not neutral. Make a decisive call.
 
 Timing: this decision is made just after the US market close, using today's \
 closing data. The order will be placed from Australia during US after-hours or \
-queued for the next US open, so judge for the next session, not intraday moves."""
+queued for the next US open, so judge for the next session, not intraday moves.
 
-SCHEMA = {
+When you have finished researching, reply with ONLY a JSON object, no other text:
+{"call": "BUY" or "SELL", "confidence": integer 1-10, "time_horizon": "short phrase",
+ "reasoning": ["up to 3 short bullet strings"], "what_would_change_my_mind": "one condition"}"""
+
+SCHEMA = {  # used to check the reply (no longer sent as a forced format)
     "type": "object",
     "properties": {
         "call": {"type": "string", "enum": ["BUY", "SELL"]},
@@ -118,10 +122,28 @@ def make_call(position, rows):
         tools=[{"type": "web_search"}],
         max_tool_calls=6,                 # cap the number of web searches
         reasoning={"effort": "medium"},   # faster; plenty for a daily call
-        text={"format": {"type": "json_schema", "name": "tqqq_call",
-                         "schema": SCHEMA, "strict": True}},
+        max_output_tokens=16000,          # hard stop if the answer runs away
     )
-    return json.loads(resp.output_text)
+    return parse_call(resp.output_text)
+
+
+def parse_call(text):
+    """Pull the JSON object out of the model's reply and check it has what we need."""
+    start, end = text.find("{"), text.rfind("}")
+    if start == -1 or end == -1:
+        raise ValueError(f"No JSON in model reply: {text[:300]!r}")
+    data = json.loads(text[start:end + 1])
+    missing = [k for k in SCHEMA["required"] if k not in data]
+    if missing:
+        raise ValueError(f"Model reply missing {missing}: {data}")
+    data["call"] = str(data["call"]).strip().upper()
+    if data["call"] not in ("BUY", "SELL"):
+        raise ValueError(f"Call must be BUY or SELL, got {data['call']!r}")
+    data["confidence"] = max(1, min(10, int(data["confidence"])))
+    if isinstance(data["reasoning"], str):
+        data["reasoning"] = [data["reasoning"]]
+    data["reasoning"] = [str(r) for r in data["reasoning"]][:3]
+    return data
 
 
 def action_for(call, position):
