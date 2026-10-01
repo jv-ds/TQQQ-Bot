@@ -1,0 +1,46 @@
+name: Daily TQQQ call
+
+on:
+  schedule:
+    # 21:00 UTC Sun-Thu = ~8am Melbourne Mon-Fri (7am before daylight saving).
+    # Monday's run uses Friday's US close; Tue-Fri use the previous night's close.
+    - cron: "0 21 * * 0-4"
+  workflow_dispatch:
+    inputs:
+      position:
+        description: "Override current position (leave blank to infer from log)"
+        required: false
+        type: choice
+        options: ["", "IN", "OUT"]
+
+permissions:
+  contents: write   # lets the job commit the updated log back to the repo
+
+jobs:
+  call:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install -r requirements.txt
+
+      - name: Make the call
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          EMAIL_TO: ${{ secrets.EMAIL_TO }}
+          POSITION: ${{ inputs.position }}
+        run: python tqqq_call.py
+
+      - name: Save log
+        run: |
+          git config user.name "tqqq-bot"
+          git config user.email "tqqq-bot@users.noreply.github.com"
+          git add tqqq_calls.csv
+          git commit -m "Call $(date -u +%Y-%m-%d)" || echo "Nothing to commit"
+          git push
