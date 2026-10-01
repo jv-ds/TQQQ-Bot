@@ -22,7 +22,7 @@ from datetime import datetime, timezone
 
 from openai import OpenAI
 
-MODEL = "gpt-6-astra"          # swap for whichever current model you want
+MODEL = "gpt-6.1-sol"          # swap for whichever current model you want
 LOG_FILE = "tqqq_calls.csv"
 BENCHMARK = "SPY"        # S&P 500 ETF; use "^GSPC" for the raw index level
 
